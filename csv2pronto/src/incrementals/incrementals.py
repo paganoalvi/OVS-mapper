@@ -16,6 +16,7 @@ class Incremental(enum.Enum):
     REAL_ESTATE = itertools.count()
     SPACE = itertools.count()
     LISTING = itertools.count()
+    FEATURE = itertools.count()
 
     def fragment(self) -> str:
         """

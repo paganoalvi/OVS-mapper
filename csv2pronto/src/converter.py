@@ -129,23 +129,22 @@ def add_price(g: Graph, listing:Node, value: float, currency: str, p_type: str, 
 
     priceValue: Node = BNode()
     featurePrice: Node = create_feature(listing, "price")
-    temporalFeaturePrice: Node = BNode()
     dateNode: Node = BNode()
     
     g.add((priceValue, RDF.type, GR.UnitPriceSpecification))
     g.add((priceValue, GR.hasCurrency, String(currency)))
     g.add((priceValue, GR.hasCurrencyValue, Float(value)))
     g.add((priceValue, GR.priceType, String(p_type)))
-
-    g.add((temporalFeaturePrice, RDF.type, IO.TemporalFeature))
-    g.add((temporalFeaturePrice, IO.hasScraperValue, priceValue))
+    g.add((featurePrice, IO.hasValue, priceValue))
+    
+    g.add((featurePrice, RDF.type, IO.Precio))
+    g.add((featurePrice, IO.hasOrigin, IO.Scraper))
 
     g.add((dateNode, RDF.type, TIME.Instant))
     g.add((dateNode, TIME.inXSDDateTimeStamp, DateTime(date)))
-    g.add((temporalFeaturePrice, IO.hasScraperTime, dateNode))
+    g.add((featurePrice, TIME.hasTime, dateNode))
+    
 
-    g.add((featurePrice, RDF.type, IO.Precio))
-    g.add((featurePrice, IO.hasDetail, temporalFeaturePrice))
 
     return featurePrice
 
@@ -231,9 +230,9 @@ def add_real_estate(g: Graph, row: dict) -> Node:
     g.add((province, RDFS.label, String(row.get("province"))))
 
     if row.get("address"):
-        add_address(g, real_estate, IO.hasScraperValue, IO.hasScraperTime, str(row.get("address")), neighborhood, district, province, dateparser.parse(row.get("date_extracted")))
+        add_address(g, real_estate, IO.Scraper, str(row.get("address")), neighborhood, district, province, dateparser.parse(row.get("date_extracted")))
     if row.get("direccion"):
-        add_address(g, real_estate, IO.hasAVEValue, IO.hasAVETime,  str(row.get("direccion")), neighborhood, district, province, dateparser.parse(row.get("date_ave")))
+        add_address(g, real_estate, IO.AVE, str(row.get("direccion")), neighborhood, district, province, dateparser.parse(row.get("date_ave")))
 
     # if row.get("neighborhood"):
     #     add_neighborhood(g, real_estate, IO.hasScraperValue, IO.hasScraperTime, str(row["neighborhood"]), district, province, dateparser.parse(row.get("date_extracted")))
@@ -279,7 +278,9 @@ def add_real_estate(g: Graph, row: dict) -> Node:
 
             if value:
                 add_feature(g, land, s, value, dateparser.parse(row.get("date_ave")))
-    
+    if (row.get("medidas")):
+        add_dimensiones(g, land, str(row.get("medidas")), dateparser.parse(row.get("date_ave")))
+
     #add features to BUILDING
     for s in ["es_monetizable", "a_demoler"]:
         with suppress(KeyError):
@@ -315,7 +316,7 @@ def add_real_estate(g: Graph, row: dict) -> Node:
             unit = row[f"{s}_surface_unit"] or row[f"reconstructed_{s}_surface_unit"]
 
             if value and unit:
-                add_surface(g, land, value, unit, s)
+                add_surface(g, land, value, unit, s, dateparser.parse(row.get("date_extracted")))
 
     # add amount of rooms
     g.add((building, PR.has_number_of_rooms, Integer(row.get("room_amnt"))))
@@ -345,11 +346,33 @@ def _create_neighborhood(province:URIRef, district:URIRef, neighborhood:str):
     ]
 
 
-def add_address(g: Graph, real_estate: Node, hasValue: URIRef, hasTime:URIRef,address: str, neighborhood: Node, district: Node, province: Node, date: datetime | None) -> Node:
+def add_dimensiones(g: Graph, land: Node, value: str, date: datetime|None) -> Node:
+    """Add dimensions to the graph g and return the surface's Node."""
+    dimensionsValue: Node = BNode()
+    featureDimensions: Node = create_feature(land, "dimensions")
+    dateNode: Node = BNode() 
+    
+    g.add((dimensionsValue, RDF.type, PR.SizeSpecification))
+    g.add((dimensionsValue, GR.hasValue, String(value)))
+    g.add((dimensionsValue, GR.hasUnitOfMeasurement, String("metros")))
+    g.add((dimensionsValue, PR.size_type, String("lot dimensions")))
+    
+    g.add((featureDimensions, RDF.type, IO.Dimensiones))
+    g.add((featureDimensions, IO.hasOrigin, IO.AVE))
+    g.add((featureDimensions, IO.hasValue, dimensionsValue))
+
+    g.add((dateNode, RDF.type, TIME.Instant))
+    g.add((dateNode, TIME.inXSDDateTimeStamp, DateTime(date)))
+    g.add((featureDimensions, TIME.hasTime, dateNode))
+
+    g.add((land, IO.hasFeature, featureDimensions))
+
+    return dimensionsValue
+
+def add_address(g: Graph, real_estate: Node, origin: URIRef, address: str, neighborhood: Node, district: Node, province: Node, date: datetime | None) -> Node:
     """Add address to the graph g and return the address's Node."""
     addressValue: Node = BNode()
     featureAddress: Node = create_feature(real_estate, "address")
-    temporalFeatureAddress: Node = BNode() # no seria bNode¿?
     dateNode: Node = BNode()
 
     
@@ -358,23 +381,20 @@ def add_address(g: Graph, real_estate: Node, hasValue: URIRef, hasTime:URIRef,ad
     g.add((addressValue, IO.neighborhood, neighborhood))
     g.add((addressValue, IO.city, district))
     g.add((addressValue, IO.province, province))
+    g.add((featureAddress, IO.hasValue, addressValue))
 
-
-    g.add((temporalFeatureAddress, RDF.type, IO.TemporalFeature))
-    g.add((temporalFeatureAddress, hasValue, addressValue))
+    g.add((featureAddress, RDF.type, IO.Direccion))
+    g.add((featureAddress, IO.hasOrigin, origin))
 
     g.add((dateNode, RDF.type, TIME.Instant))
     g.add((dateNode, TIME.inXSDDateTimeStamp, DateTime(date)))
-    g.add((temporalFeatureAddress, hasTime, dateNode))
-
-    g.add((featureAddress, RDF.type, IO.Direccion))
-    g.add((featureAddress, IO.hasDetail, temporalFeatureAddress))
+    g.add((featureAddress, TIME.hasTime, dateNode))
 
     g.add((real_estate, IO.hasFeature, featureAddress))
 
     return addressValue
 
-
+@default_to_incremental(IO, Incremental.FEATURE)
 def create_feature(subject: Node, feature: str) -> Node:
     return IO[f"feature_{feature}_{subject.fragment}"]
 
@@ -382,7 +402,6 @@ def create_feature(subject: Node, feature: str) -> Node:
 def add_feature(g: Graph, space: Node, featureName :str, value, date: datetime|None) -> Node: 
     featureValue: Node = BNode()
     feature: Node = create_feature(space, featureName)
-    temporalFeature: Node = BNode() # no seria bNode¿?
     dateNode: Node = BNode() 
     
     g.add((featureValue, RDF.type, RDFS.Literal)) # ⸘Literal‽
@@ -395,15 +414,14 @@ def add_feature(g: Graph, space: Node, featureName :str, value, date: datetime|N
     if (type(value)==bool):
         g.add((featureValue, RDFS.label, Boolean(value)))
     
-    g.add((temporalFeature, RDF.type, IO.TemporalFeature))
-    g.add((temporalFeature, IO.hasAVEValue, featureValue))
-
+    g.add((feature, RDF.type, IO[featureName.capitalize()]))
+    g.add((feature, IO.hasValue, featureValue))
+    g.add((feature, IO.hasOrigin, IO.AVE))
+    
     g.add((dateNode, RDF.type, TIME.Instant))
     g.add((dateNode, TIME.inXSDDateTimeStamp, DateTime(date)))
-    g.add((temporalFeature, IO.hasAVETime, dateNode))
+    g.add((feature, TIME.hasTime, dateNode))
     
-    g.add((feature, RDF.type, IO[featureName.capitalize()]))
-    g.add((feature, IO.hasDetail, temporalFeature))
 
     if not (IO[featureName.capitalize()], RDFS.subClassOf, IO.Feature) in g:
         g.add((IO[featureName.capitalize()], RDFS.subClassOf, IO.Feature))
@@ -413,22 +431,24 @@ def add_feature(g: Graph, space: Node, featureName :str, value, date: datetime|N
 
     return featureValue
 
-def add_surface(g: Graph, space: Node, value: float, unit: str, s_type: str) -> Node:
+def add_surface(g: Graph, space: Node, value: float, unit: str, s_type: str, date: datetime|None) -> Node:
     """Add surface to the graph g and return the surface's Node."""
     surfaceValue: Node = BNode()
     featureSurface: Node = create_feature(space, s_type)
-    temporalFeatureSurface: Node = BNode() # no seria bNode¿?
-
+    dateNode: Node = BNode() 
+    
     g.add((surfaceValue, RDF.type, PR.SizeSpecification))
     g.add((surfaceValue, GR.hasValue, Float(value)))
     g.add((surfaceValue, GR.hasUnitOfMeasurement, String(unit)))
     g.add((surfaceValue, PR.size_type, String(s_type)))
     
-    g.add((temporalFeatureSurface, RDF.type, IO.TemporalFeature))
-    g.add((temporalFeatureSurface, IO.hasScraperValue, surfaceValue))
-    
     g.add((featureSurface, RDF.type, IO.Superficie))
-    g.add((featureSurface, IO.hasDetail, temporalFeatureSurface))
+    g.add((featureSurface, IO.hasOrigin, IO.Scraper))
+    g.add((featureSurface, IO.hasValue, surfaceValue))
+
+    g.add((dateNode, RDF.type, TIME.Instant))
+    g.add((dateNode, TIME.inXSDDateTimeStamp, DateTime(date)))
+    g.add((featureSurface, TIME.hasTime, dateNode))
 
     g.add((space, IO.hasFeature, featureSurface))
 
