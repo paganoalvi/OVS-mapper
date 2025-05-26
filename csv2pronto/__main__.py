@@ -1,5 +1,4 @@
 """ Convert a CSV file to an RDF graph following the Pronto ontology """
-
 import argparse
 import csv
 import pandas as pd
